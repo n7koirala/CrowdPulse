@@ -1,0 +1,62 @@
+.mapContainer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.marker {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: rgba(15, 23, 42, 0.9);
+  border: 3px solid;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow:
+    0 0 20px var(--marker-glow),
+    0 4px 12px rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(8px);
+}
+
+.marker:hover {
+  transform: scale(1.15);
+  box-shadow:
+    0 0 30px var(--marker-glow),
+    0 6px 20px rgba(0, 0, 0, 0.5);
+}
+
+.markerIcon {
+  font-size: 20px;
+}
+
+.popup :global(.mapboxgl-popup-content) {
+  padding: 0;
+  background: transparent;
+  border-radius: 16px;
+  box-shadow: none;
+}
+
+.popup :global(.mapboxgl-popup-tip) {
+  display: none;
+}
+
+.popup :global(.mapboxgl-popup-close-button) {
+  font-size: 20px;
+  color: #94a3b8;
+  padding: 8px 12px;
+  right: 4px;
+  top: 4px;
+  transition: color 0.2s;
+}
+
+.popup :global(.mapboxgl-popup-close-button:hover) {
+  color: #f1f5f9;
+  background: transparent;
+}

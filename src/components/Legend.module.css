@@ -1,0 +1,41 @@
+.legend {
+    background: rgba(15, 23, 42, 0.85);
+    backdrop-filter: blur(16px);
+    border-radius: 12px;
+    padding: 14px 18px;
+    border: 1px solid rgba(148, 163, 184, 0.1);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+}
+
+.title {
+    font-size: 12px;
+    font-weight: 600;
+    color: #94a3b8;
+    margin: 0 0 10px 0;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.scale {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.gradient {
+    height: 10px;
+    border-radius: 5px;
+    background: linear-gradient(90deg,
+            #22c55e 0%,
+            #eab308 40%,
+            #f97316 70%,
+            #ef4444 100%);
+    box-shadow: 0 0 12px rgba(239, 68, 68, 0.3);
+}
+
+.labels {
+    display: flex;
+    justify-content: space-between;
+    font-size: 10px;
+    color: #64748b;
+}
