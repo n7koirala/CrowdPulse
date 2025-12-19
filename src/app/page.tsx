@@ -18,12 +18,20 @@ const CrowdMap = dynamic(() => import('@/components/Map'), {
   ),
 });
 
+// Default location (New York City)
+const DEFAULT_LOCATION = {
+  latitude: 40.7282,
+  longitude: -73.9942,
+  name: 'New York',
+};
+
 export default function Home() {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState('all');
   const [mounted, setMounted] = useState(false);
   const [dayName, setDayName] = useState('');
   const [timeDisplay, setTimeDisplay] = useState('');
+  const [location, setLocation] = useState(DEFAULT_LOCATION);
 
   // Only run on client side after mount
   useEffect(() => {
@@ -37,6 +45,11 @@ export default function Home() {
     const interval = setInterval(updateTime, 60000);
     return () => clearInterval(interval);
   }, []);
+
+  const handleLocationChange = (newLocation: { latitude: number; longitude: number; name: string }) => {
+    setLocation(newLocation);
+    setFilterType('all'); // Reset filter when changing location
+  };
 
   return (
     <main className={styles.main}>
@@ -60,14 +73,20 @@ export default function Home() {
         <SearchBar
           onSearch={setSearchQuery}
           onFilterChange={setFilterType}
+          onLocationChange={handleLocationChange}
           activeFilter={filterType}
+          currentLocation={location.name}
         />
       </div>
 
       {/* Map - only render after client mount */}
       <div className={styles.mapWrapper}>
         {mounted ? (
-          <CrowdMap searchQuery={searchQuery} filterType={filterType} />
+          <CrowdMap
+            searchQuery={searchQuery}
+            filterType={filterType}
+            location={location}
+          />
         ) : (
           <div className={styles.mapLoading}>
             <div className={styles.loader} />
@@ -88,4 +107,3 @@ export default function Home() {
     </main>
   );
 }
-

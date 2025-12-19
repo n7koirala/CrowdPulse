@@ -4,6 +4,10 @@
     gap: 14px;
 }
 
+.citySearchWrapper {
+    position: relative;
+}
+
 .searchWrapper {
     position: relative;
     display: flex;
@@ -61,6 +65,106 @@
     color: #f87171;
 }
 
+.loadingSpinner {
+    position: absolute;
+    right: 12px;
+    width: 20px;
+    height: 20px;
+    border: 2px solid rgba(99, 102, 241, 0.2);
+    border-top-color: #6366f1;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* Suggestions dropdown */
+.suggestionsDropdown {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    margin-top: 8px;
+    background: rgba(15, 23, 42, 0.95);
+    border: 1px solid rgba(148, 163, 184, 0.2);
+    border-radius: 14px;
+    overflow: hidden;
+    z-index: 100;
+    backdrop-filter: blur(20px);
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4);
+}
+
+.suggestionItem {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    padding: 14px 16px;
+    border: none;
+    background: transparent;
+    color: #f1f5f9;
+    cursor: pointer;
+    text-align: left;
+    transition: background 0.2s;
+}
+
+.suggestionItem:hover {
+    background: rgba(99, 102, 241, 0.15);
+}
+
+.suggestionItem:not(:last-child) {
+    border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+}
+
+.suggestionIcon {
+    font-size: 18px;
+}
+
+.suggestionText {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.suggestionName {
+    font-weight: 600;
+    font-size: 14px;
+}
+
+.suggestionFullName {
+    font-size: 12px;
+    color: #64748b;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Current location badge */
+.currentLocation {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.locationBadge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px;
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(139, 92, 246, 0.2));
+    border: 1px solid rgba(99, 102, 241, 0.3);
+    border-radius: 20px;
+    font-size: 13px;
+    font-weight: 500;
+    color: #a5b4fc;
+}
+
+/* Filters */
 .filters {
     display: flex;
     gap: 8px;
@@ -101,4 +205,15 @@
 
 .filterLabel {
     font-weight: 500;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .suggestionsDropdown {
+        border-radius: 10px;
+    }
+
+    .suggestionItem {
+        padding: 12px 14px;
+    }
 }

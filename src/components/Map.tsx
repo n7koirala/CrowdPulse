@@ -6,7 +6,6 @@ import { MapboxOverlay } from '@deck.gl/mapbox';
 import { HeatmapLayer } from '@deck.gl/aggregation-layers';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import {
-    places,
     generateCrowdPoints,
     calculateCrowdLevel,
     getCrowdDescription,
@@ -18,19 +17,23 @@ import { getCurrentHour } from '@/utils/utils';
 import PlaceCard from './PlaceCard';
 import styles from './Map.module.css';
 
-// Replace with your Mapbox token
 const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || 'YOUR_MAPBOX_TOKEN';
 
 interface CrowdMapProps {
     searchQuery: string;
     filterType: string;
+    location: {
+        latitude: number;
+        longitude: number;
+        name: string;
+    };
 }
 
-export default function CrowdMap({ searchQuery, filterType }: CrowdMapProps) {
+export default function CrowdMap({ searchQuery, filterType, location }: CrowdMapProps) {
     const [viewState, setViewState] = useState({
-        latitude: 40.7282,
-        longitude: -73.9942,
-        zoom: 15,
+        latitude: location.latitude,
+        longitude: location.longitude,
+        zoom: 14,
         pitch: 45,
         bearing: 0,
     });
@@ -39,29 +42,79 @@ export default function CrowdMap({ searchQuery, filterType }: CrowdMapProps) {
     const [currentHour, setCurrentHour] = useState(getCurrentHour());
     const [crowdPoints, setCrowdPoints] = useState<CrowdDataPoint[]>([]);
     const [deckOverlay, setDeckOverlay] = useState<MapboxOverlay | null>(null);
+    const [places, setPlaces] = useState<Place[]>([]);
+    const [isLoadingPlaces, setIsLoadingPlaces] = useState(false);
+    const [placesError, setPlacesError] = useState<string | null>(null);
+
+    // Fetch places when location or filter changes
+    useEffect(() => {
+        const fetchPlaces = async () => {
+            setIsLoadingPlaces(true);
+            setPlacesError(null);
+
+            try {
+                const response = await fetch(
+                    `/api/places?lat=${location.latitude}&lng=${location.longitude}&type=${filterType}`
+                );
+                const data = await response.json();
+
+                if (data.error) {
+                    // If API not configured, use a friendly message
+                    if (data.error.includes('not configured')) {
+                        setPlacesError('Foursquare API key not configured. Add FOURSQUARE_API_KEY to .env.local');
+                    } else {
+                        setPlacesError(data.error);
+                    }
+                    setPlaces([]);
+                } else {
+                    setPlaces(data.places || []);
+                }
+            } catch (error) {
+                console.error('Failed to fetch places:', error);
+                setPlacesError('Failed to load places');
+                setPlaces([]);
+            } finally {
+                setIsLoadingPlaces(false);
+            }
+        };
+
+        fetchPlaces();
+    }, [location.latitude, location.longitude, filterType]);
+
+    // Fly to new location when it changes
+    useEffect(() => {
+        setViewState(prev => ({
+            ...prev,
+            latitude: location.latitude,
+            longitude: location.longitude,
+            zoom: 14,
+        }));
+        setSelectedPlace(null);
+    }, [location.latitude, location.longitude]);
 
     // Update crowd data periodically
     useEffect(() => {
         const updateCrowdData = () => {
             setCurrentHour(getCurrentHour());
-            setCrowdPoints(generateCrowdPoints(places, getCurrentHour()));
+            if (places.length > 0) {
+                setCrowdPoints(generateCrowdPoints(places, getCurrentHour()));
+            }
         };
 
         updateCrowdData();
-        const interval = setInterval(updateCrowdData, 60000); // Update every minute
+        const interval = setInterval(updateCrowdData, 60000);
 
         return () => clearInterval(interval);
-    }, []);
+    }, [places]);
 
-    // Filter places based on search and type
+    // Filter places based on search query
     const filteredPlaces = useMemo(() => {
-        return places.filter(place => {
-            const matchesSearch = place.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                place.address.toLowerCase().includes(searchQuery.toLowerCase());
-            const matchesType = filterType === 'all' || place.type === filterType;
-            return matchesSearch && matchesType;
-        });
-    }, [searchQuery, filterType]);
+        if (!searchQuery) return places;
+        return places.filter(place =>
+            place.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            place.address.toLowerCase().includes(searchQuery.toLowerCase())
+        );
+    }, [places, searchQuery]);
 
     // Create heatmap layer
     const heatmapLayer = useMemo(() => {
@@ -123,6 +176,28 @@ export default function CrowdMap({ searchQuery, filterType }: CrowdMapProps) {
                 attributionControl={false}
             >
                 <NavigationControl position="top-right" />
+
+                {/* Loading indicator */}
+                {isLoadingPlaces && (
+                    <div className={styles.loadingOverlay}>
+                        <div className={styles.loadingSpinner} />
+                        <span>Loading places...</span>
+                    </div>
+                )}
+
+                {/* Error message */}
+                {placesError && (
+                    <div className={styles.errorOverlay}>
+                        <span>⚠️ {placesError}</span>
+                    </div>
+                )}
+
+                {/* No places message */}
+                {!isLoadingPlaces && !placesError && filteredPlaces.length === 0 && (
+                    <div className={styles.noPlacesOverlay}>
+                        <span>No places found in this area</span>
+                    </div>
+                )}
 
                 {/* Place markers */}
                 {filteredPlaces.map(place => {
