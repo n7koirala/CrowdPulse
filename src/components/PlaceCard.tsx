@@ -27,7 +27,7 @@ export default function PlaceCard({ place, currentHour }: PlaceCardProps) {
                 <div className={styles.stat}>
                     <span className={styles.statLabel}>Rating</span>
                     <span className={styles.statValue}>
-                        ⭐ {place.rating}
+                        ⭐ {place.rating.toFixed(2)}
                     </span>
                 </div>
                 <div className={styles.stat}>

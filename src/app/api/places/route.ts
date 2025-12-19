@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
+const BESTTIME_API_KEY = process.env.BESTTIME_API_KEY_PRIVATE;
 
-// POI category mappings for Mapbox
+// POI category mappings
 const categoryMap: Record<string, string[]> = {
     bar: ['bar', 'pub', 'nightlife'],
     restaurant: ['restaurant', 'food'],
@@ -35,11 +36,56 @@ interface Place {
     priceLevel: number;
     peakHours: number[];
     basePopularity: number;
+    liveData?: {
+        liveBusyness: number | null;
+        forecastedBusyness: number | null;
+        isLiveDataAvailable: boolean;
+    };
+}
+
+// Fetch live busyness from BestTime.app
+async function fetchLiveBusyness(venueName: string, venueAddress: string): Promise<{
+    liveBusyness: number | null;
+    forecastedBusyness: number | null;
+    isLiveDataAvailable: boolean;
+} | null> {
+    if (!BESTTIME_API_KEY) return null;
+
+    try {
+        const params = new URLSearchParams({
+            'api_key_private': BESTTIME_API_KEY,
+            'venue_name': venueName,
+            'venue_address': venueAddress,
+        });
+
+        const response = await fetch(
+            `https://besttime.app/api/v1/forecasts/live?${params}`,
+            { method: 'POST' }
+        );
+
+        if (!response.ok) {
+            console.log(`BestTime: No data for ${venueName}`);
+            return null;
+        }
+
+        const data = await response.json();
+
+        if (data.status === 'OK' && data.analysis) {
+            return {
+                liveBusyness: data.analysis.venue_live_busyness ?? null,
+                forecastedBusyness: data.analysis.venue_forecasted_busyness ?? null,
+                isLiveDataAvailable: data.analysis.venue_live_busyness_available || false,
+            };
+        }
+        return null;
+    } catch (error) {
+        console.error(`BestTime error for ${venueName}:`, error);
+        return null;
+    }
 }
 
 // Generate demo places around a location
 function generateDemoPlaces(lat: number, lng: number, filterType: string): Place[] {
-    // Popular establishment names by type
     const placeNames: Record<PlaceType, string[]> = {
         bar: ['The Blue Room', 'Whiskey Den', 'Night Owl Bar', 'The Rusty Nail', 'Moonlight Lounge'],
         restaurant: ['Bella Italia', 'Golden Dragon', 'The Corner Bistro', 'Farm Table', 'Spice Garden'],
@@ -59,7 +105,6 @@ function generateDemoPlaces(lat: number, lng: number, filterType: string): Place
         const count = filterType === 'all' ? 3 : 5;
 
         for (let i = 0; i < count && i < names.length; i++) {
-            // Generate random offset within ~1.5km radius
             const latOffset = (Math.random() - 0.5) * 0.025;
             const lngOffset = (Math.random() - 0.5) * 0.025;
 
@@ -86,6 +131,7 @@ export async function GET(request: NextRequest) {
     const lat = searchParams.get('lat');
     const lng = searchParams.get('lng');
     const type = searchParams.get('type') || 'all';
+    const useBestTime = searchParams.get('live') === 'true';
 
     if (!lat || !lng) {
         return NextResponse.json({ error: 'lat and lng parameters required' }, { status: 400 });
@@ -94,91 +140,114 @@ export async function GET(request: NextRequest) {
     const latitude = parseFloat(lat);
     const longitude = parseFloat(lng);
 
-    // Try Mapbox API first if token is available
-    if (MAPBOX_TOKEN) {
+    // Generate demo places first (these will be enriched with live data)
+    let places = generateDemoPlaces(latitude, longitude, type);
+
+    // If BestTime API key is available and live data is requested, try to get real data
+    if (BESTTIME_API_KEY && useBestTime) {
+        console.log('Fetching live busyness data from BestTime.app...');
+
+        // Fetch live data for first few places (to conserve API credits)
+        const placesToEnrich = places.slice(0, 5);
+        const enrichedPlaces = await Promise.all(
+            placesToEnrich.map(async (place) => {
+                // Use the general area as address context
+                const cityContext = `${latitude.toFixed(2)}, ${longitude.toFixed(2)}`;
+                const liveData = await fetchLiveBusyness(place.name, cityContext);
+
+                if (liveData) {
+                    return {
+                        ...place,
+                        liveData,
+                        // Update basePopularity if we have live data
+                        basePopularity: liveData.liveBusyness ?? liveData.forecastedBusyness ?? place.basePopularity,
+                    };
+                }
+                return place;
+            })
+        );
+
+        // Replace enriched places
+        places = [...enrichedPlaces, ...places.slice(5)];
+    }
+
+    // Also try BestTime venue search for real venues
+    if (BESTTIME_API_KEY) {
         try {
-            const allPlaces: Place[] = [];
+            const searchQuery = type === 'all' ? 'popular places' : type;
+            const params = new URLSearchParams({
+                'api_key_private': BESTTIME_API_KEY,
+                'q': `${searchQuery} near ${latitude.toFixed(4)}, ${longitude.toFixed(4)}`,
+                'num': '10',
+                'format': 'raw',
+            });
 
-            // Build search queries based on type
-            let searchQueries: string[] = [];
-            if (type === 'all') {
-                searchQueries = ['bar', 'restaurant', 'coffee'];
-            } else if (categoryMap[type]) {
-                searchQueries = categoryMap[type];
-            } else {
-                searchQueries = [type];
-            }
+            const response = await fetch(
+                `https://besttime.app/api/v1/venues/search?${params}`,
+                { method: 'POST' }
+            );
 
-            // Function to determine place type from Mapbox category
-            const getPlaceType = (cats: string[], searchQuery: string): PlaceType => {
-                const categoryStr = cats.join(' ').toLowerCase();
-                if (categoryStr.includes('bar') || categoryStr.includes('pub') || searchQuery.includes('bar')) return 'bar';
-                if (categoryStr.includes('coffee') || categoryStr.includes('cafe') || searchQuery.includes('coffee')) return 'cafe';
-                if (categoryStr.includes('nightclub') || categoryStr.includes('club') || searchQuery.includes('club')) return 'club';
-                if (categoryStr.includes('gym') || categoryStr.includes('fitness') || searchQuery.includes('gym')) return 'gym';
-                if (categoryStr.includes('shop') || categoryStr.includes('mall') || searchQuery.includes('shop')) return 'shopping';
-                return 'restaurant';
-            };
+            if (response.ok) {
+                const data = await response.json();
+                console.log('BestTime venue search response:', data.status);
 
-            // Limit to 3 queries to avoid rate limits
-            const queriesToRun = searchQueries.slice(0, 3);
+                // If we got venues from BestTime, add them to our list
+                if (data.venues && Array.isArray(data.venues)) {
+                    const bestTimePlaces: Place[] = data.venues.map((venue: {
+                        venue_id: string;
+                        venue_name: string;
+                        venue_address: string;
+                        venue_lat?: number;
+                        venue_lng?: number;
+                        day_info?: { day_int: number; venue_open: number; venue_closed: number };
+                        venue_foot_traffic_forecast?: number;
+                    }) => {
+                        // Determine type from venue name/category
+                        let placeType: PlaceType = 'restaurant';
+                        const nameLower = venue.venue_name.toLowerCase();
+                        if (nameLower.includes('bar') || nameLower.includes('pub')) placeType = 'bar';
+                        else if (nameLower.includes('coffee') || nameLower.includes('cafe')) placeType = 'cafe';
+                        else if (nameLower.includes('gym') || nameLower.includes('fitness')) placeType = 'gym';
+                        else if (nameLower.includes('mall') || nameLower.includes('shop')) placeType = 'shopping';
+                        else if (nameLower.includes('club')) placeType = 'club';
 
-            for (const query of queriesToRun) {
-                try {
-                    const response = await fetch(
-                        `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?` +
-                        `proximity=${longitude},${latitude}&types=poi&limit=7&access_token=${MAPBOX_TOKEN}`
-                    );
-
-                    if (!response.ok) {
-                        console.error(`Mapbox API error for query "${query}":`, await response.text());
-                        continue;
-                    }
-
-                    const data = await response.json();
-
-                    // Transform Mapbox features to our Place format
-                    for (const feature of data.features || []) {
-                        // Skip if we already have this place (by ID)
-                        if (allPlaces.some(p => p.id === feature.id)) continue;
-
-                        const categories = feature.properties?.category?.split(',') || [];
-                        const placeType = getPlaceType(categories, query);
-
-                        allPlaces.push({
-                            id: feature.id,
-                            name: feature.text || feature.place_name?.split(',')[0] || 'Unknown Place',
+                        return {
+                            id: venue.venue_id || `bt-${Date.now()}-${Math.random()}`,
+                            name: venue.venue_name,
                             type: placeType,
-                            latitude: feature.center[1],
-                            longitude: feature.center[0],
-                            address: feature.place_name || 'Address not available',
+                            latitude: venue.venue_lat || latitude + (Math.random() - 0.5) * 0.01,
+                            longitude: venue.venue_lng || longitude + (Math.random() - 0.5) * 0.01,
+                            address: venue.venue_address || 'Address not available',
                             rating: 3.5 + Math.random() * 1.5,
                             priceLevel: Math.floor(Math.random() * 3) + 1,
                             peakHours: peakHoursMap[placeType],
-                            basePopularity: 50 + Math.floor(Math.random() * 40),
-                        });
-                    }
-                } catch (error) {
-                    console.error(`Error fetching "${query}":`, error);
-                }
-            }
+                            basePopularity: venue.venue_foot_traffic_forecast || (50 + Math.floor(Math.random() * 40)),
+                            liveData: {
+                                liveBusyness: null,
+                                forecastedBusyness: venue.venue_foot_traffic_forecast || null,
+                                isLiveDataAvailable: false,
+                            }
+                        };
+                    });
 
-            // If we got places from Mapbox, return them
-            if (allPlaces.length > 0) {
-                // If filtering by specific type, filter the results
-                let filteredPlaces = allPlaces;
-                if (type !== 'all') {
-                    filteredPlaces = allPlaces.filter(place => place.type === type);
+                    // Prepend BestTime venues (real data) before demo places
+                    places = [...bestTimePlaces, ...places];
                 }
-                return NextResponse.json({ places: filteredPlaces.slice(0, 20) });
             }
         } catch (error) {
-            console.error('Mapbox API error:', error);
+            console.error('BestTime venue search error:', error);
+            // Continue with demo places on error
         }
     }
 
-    // Fallback to demo data if Mapbox returns no results or isn't configured
-    console.log('Using demo data for places (Mapbox returned no POI results)');
-    const demoPlaces = generateDemoPlaces(latitude, longitude, type);
-    return NextResponse.json({ places: demoPlaces });
+    // Filter by type if needed and limit results
+    let filteredPlaces = places;
+    if (type !== 'all') {
+        filteredPlaces = places.filter(place => place.type === type);
+    }
+
+    return NextResponse.json({
+        places: filteredPlaces.slice(0, 20),
+        hasBestTimeData: !!BESTTIME_API_KEY,
+    });
 }
